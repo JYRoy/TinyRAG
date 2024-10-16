@@ -1,0 +1,9 @@
+openai
+numpy
+torch
+torchvision
+transformers
+tqdm
+PyPDF2
+tiktoken
+modelscope
