@@ -1,13 +1,11 @@
-from vector_base import VectorStore
+from vector_base import VectorStore, FaissVetoreStore
 from loader import ReadFiles
 from model import ZhipuChat
 from embedding import ZhipuEmbedding, BgeEmbedding
 from reranker import BgeReranker
 
-import argparse
 
-
-def none_vector_base(vector_path: str = "./storage"):
+def none_local_vector_base(vector_path: str = "./storage"):
     # 没有保存数据库
     docs = ReadFiles("./data").get_content(
         max_token_len=600, cover_content=150
@@ -29,7 +27,7 @@ def none_vector_base(vector_path: str = "./storage"):
     print(chat.chat(question, [], best_content))
 
 
-def has_vector_base(vector_path: str = "./storage"):
+def has_local_vector_base(vector_path: str = "./storage"):
     # 保存数据库之后
     vector = VectorStore()
 
@@ -48,19 +46,26 @@ def has_vector_base(vector_path: str = "./storage"):
     print(chat.chat(question, [], content))
 
 
-# if __name__ == "__main__":
-#     # 创建解析步骤
-#     parser = argparse.ArgumentParser(description="chat")
+def faiss_vector_base():
+    # 没有保存数据库
+    docs = ReadFiles("./data").get_content(
+        max_token_len=600, cover_content=150
+    )  # 获得data目录下的所有文件内容并分割
+    vector = FaissVetoreStore(docs)
+    embedding = BgeEmbedding()  # 创建EmbeddingModel
+    reranker = BgeReranker()  # 创建RerankerModel
+    vector.get_vector(EmbeddingModel=embedding)
+    vector.persist()
 
-#     # 添加参数步骤
-#     parser.add_argument("vector_base", metavar="V", type=str, help="vector base path")
+    question = "git的原理是什么？"
 
-#     args = parser.parse_args()
+    content = vector.query(question, EmbeddingModel=embedding, k=10)[0]
+    rerank_content = reranker.rerank(question, content[0], k=2)
+    best_content = rerank_content[0]
+    chat = ZhipuChat()
+    print(chat.chat(question, [], best_content))
 
-#     if args.vector_base != None:
-#         none_vector_base(args.vector_base)
-#     else:
-#         has_vector_base(args.vector_base)
 
-none_vector_base()
-has_vector_base()
+none_local_vector_base()
+has_local_vector_base()
+faiss_vector_base()

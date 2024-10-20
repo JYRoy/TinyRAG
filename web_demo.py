@@ -1,6 +1,6 @@
 import gradio as gr
 import time
-from vector_base import VectorStore
+from vector_base import VectorStore, FaissVetoreStore
 from loader import ReadFiles
 from model import ZhipuChat
 from embedding import ZhipuEmbedding, BgeEmbedding
@@ -8,15 +8,18 @@ from reranker import BgeReranker
 
 
 def chat(message, history):
-    vector = VectorStore()
-
-    vector.load_vector("./storage")  # 加载本地的数据库
+    docs = ReadFiles("./data").get_content(
+        max_token_len=600, cover_content=150
+    )  # 获得data目录下的所有文件内容并分割
+    vector = FaissVetoreStore(docs)
 
     embedding = BgeEmbedding()  # 创建EmbeddingModel
     reranker = BgeReranker()  # 创建RerankerModel
+    vector.get_vector(EmbeddingModel=embedding)
+    vector.persist()
 
     content = vector.query(message, EmbeddingModel=embedding, k=10)
-    rerank_content = reranker.rerank(message, content, k=10)
+    rerank_content = reranker.rerank(message, content[0], k=10)
     best_content = rerank_content[0]
 
     chat = ZhipuChat()
