@@ -28,28 +28,21 @@ class BaseEmbeddings:
         return dot_product / magnitude
 
 
-class JinaEmbedding(BaseEmbeddings):
+class ZhipuEmbedding(BaseEmbeddings):
     """
-    class for Jina embeddings
+    class for Zhipu embeddings
     """
 
-    def __init__(
-        self, path: str = "jinaai/jina-embeddings-v2-base-zh", is_api: bool = False
-    ) -> None:
+    def __init__(self, path: str = "", is_api: bool = True) -> None:
         super().__init__(path, is_api)
-        self._model = self.load_model()
-        self.path = path
+        if self.is_api:
+            from zhipuai import ZhipuAI
+
+            self.client = ZhipuAI(api_key=os.getenv("ZHIPUAI_API_KEY"))
 
     def get_embedding(self, text: str) -> List[float]:
-        return self._model.encode([text])[0].tolist()
-
-    def load_model(self):
-        import torch
-        from transformers import AutoModel
-
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-        else:
-            device = torch.device("cpu")
-        model = AutoModel.from_pretrained(self.path, trust_remote_code=True).to(device)
-        return model
+        response = self.client.embeddings.create(
+            model="embedding-2",
+            input=text,
+        )
+        return response.data[0].embedding

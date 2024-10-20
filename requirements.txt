@@ -7,3 +7,4 @@ tqdm
 PyPDF2
 tiktoken
 modelscope
+faiss-gpu
