@@ -1,11 +1,11 @@
-from vector_base import VectorStore, FaissVetoreStore
+from vector_store import VectorStore, FaissVetoreStore
 from loader import ReadFiles
 from model import ZhipuChat
 from embedding import ZhipuEmbedding, BgeEmbedding
 from reranker import BgeReranker
 
 
-def none_local_vector_base(vector_path: str = "./storage"):
+def none_local_vector_store(vector_path: str = "./storage"):
     # 没有保存数据库
     docs = ReadFiles("./data").get_content(
         max_token_len=600, cover_content=150
@@ -27,7 +27,7 @@ def none_local_vector_base(vector_path: str = "./storage"):
     print(chat.chat(question, [], best_content))
 
 
-def has_local_vector_base(vector_path: str = "./storage"):
+def has_local_vector_store(vector_path: str = "./storage"):
     # 保存数据库之后
     vector = VectorStore()
 
@@ -46,7 +46,7 @@ def has_local_vector_base(vector_path: str = "./storage"):
     print(chat.chat(question, [], content))
 
 
-def faiss_vector_base():
+def faiss_vector_store():
     # 没有保存数据库
     docs = ReadFiles("./data").get_content(
         max_token_len=600, cover_content=150
@@ -66,6 +66,6 @@ def faiss_vector_base():
     print(chat.chat(question, [], best_content))
 
 
-none_local_vector_base()
-has_local_vector_base()
-faiss_vector_base()
+none_local_vector_store()
+has_local_vector_store()
+faiss_vector_store()

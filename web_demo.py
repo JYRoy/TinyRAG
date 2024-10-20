@@ -1,6 +1,6 @@
 import gradio as gr
 import time
-from vector_base import VectorStore, FaissVetoreStore
+from vector_store import VectorStore, FaissVetoreStore
 from loader import ReadFiles
 from model import ZhipuChat
 from embedding import ZhipuEmbedding, BgeEmbedding

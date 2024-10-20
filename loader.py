@@ -103,17 +103,3 @@ class ReadFiles:
             for page_num in range(len(reader.pages)):
                 text += reader.pages[page_num].extract_text()
             return text
-
-
-class Documents:
-    """
-    获取已分好类的json格式文档
-    """
-
-    def __init__(self, path: str = "") -> None:
-        self.path = path
-
-    def get_content(self):
-        with open(self.path, mode="r", encoding="utf-8") as f:
-            content = json.load(f)
-        return content
