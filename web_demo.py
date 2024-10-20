@@ -2,8 +2,9 @@ import gradio as gr
 import time
 from vector_base import VectorStore
 from loader import ReadFiles
-from model import InternLMChat, ZhipuChat
-from embedding import JinaEmbedding, ZhipuEmbedding
+from model import ZhipuChat
+from embedding import ZhipuEmbedding, BgeEmbedding
+from reranker import BgeReranker
 
 
 def chat(message, history):
@@ -11,11 +12,15 @@ def chat(message, history):
 
     vector.load_vector("./storage")  # 加载本地的数据库
 
-    embedding = ZhipuEmbedding()  # 创建EmbeddingModel
+    embedding = BgeEmbedding()  # 创建EmbeddingModel
+    reranker = BgeReranker()  # 创建RerankerModel
 
-    content = vector.query(message, EmbeddingModel=embedding, k=1)[0]
+    content = vector.query(message, EmbeddingModel=embedding, k=10)
+    rerank_content = reranker.rerank(message, content, k=10)
+    best_content = rerank_content[0]
+
     chat = ZhipuChat()
-    yield chat.chat(message, [], content)
+    yield chat.chat(message, [], best_content)
 
 
 demo = gr.ChatInterface(
