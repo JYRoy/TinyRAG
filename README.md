@@ -7,6 +7,7 @@ A tiny RAG system.
   - [模块](#模块)
   - [项目结构](#项目结构)
   - [QuickStart](#quickstart)
+  - [Todo](#todo)
 
 
 项目参考 [QAnything](https://github.com/netease-youdao/qanything) 的设计并在 [KMnO4-zx/TinyRAG](https://github.com/KMnO4-zx/TinyRAG) 项目的基础之上进行了二次开发，增加了以下功能：
@@ -77,3 +78,20 @@ python3 web_demo.py
 ```shell
 http://localhost:9001/
 ```
+
+## Todo
+
+- 对比不同embedding对结果的影响
+- reranker和召回模型尽量不适用相同的base model
+  - 多路召回：不同embedding数据库的向量召回 + 关键词搜索
+  - 单路召回：便于数据管理，尤其是多模态场景
+- 多轮对话
+  - 直接将之前的对话结果传入模型会造成冗余，不精确
+  - 尝试
+    - 使用模型对历史会话做总结
+    - 人为对query做意图理解
+- 知识库构建
+  - chunk： previous windows 100 + current windows 400
+  - todo
+- 结果评估
+  - 人工
