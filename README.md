@@ -61,6 +61,12 @@ A tiny RAG system.
 pip install -r requirements.txt
 ```
 
+如果使用 spacy，需要执行命令来下载
+
+```shell
+python3 -m spacy download zh_core_web_sm
+```
+
 设置ZHIPU API KEY（需要去 [zhipu bigmodel](https://open.bigmodel.cn/usercenter/apikeys) 申请）
 
 ```shell

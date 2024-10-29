@@ -1,8 +1,16 @@
 import os
 
 import PyPDF2
-import json
 import tiktoken
+import fitz
+import spacy
+from apryse_sdk import PDFNet, HTMLOutputOptions, Convert
+import pickle
+from pathlib import Path
+from llama_index.readers.file import FlatReader
+from llama_index.core.node_parser import UnstructuredElementNodeParser
+from llama_index.core.schema import IndexNode, TextNode
+from llama_index.core.node_parser import SimpleNodeParser
 
 enc = tiktoken.get_encoding("cl100k_base")
 
@@ -32,8 +40,8 @@ class ReadFiles:
         docs = []
         # 读取文件内容
         for file in self.file_list:
-            content = self.read_file_content(file)
-            chunk_content = self.get_chunk(
+            content = self.read_pdf_by_unstructured(file)
+            chunk_content = self.get_chunk_by_spacy(
                 content, max_token_len=max_token_len, cover_content=cover_content
             )
             docs.extend(chunk_content)
@@ -87,6 +95,21 @@ class ReadFiles:
         return chunk_text
 
     @classmethod
+    def get_chunk_by_spacy(
+        cls, text: str, max_token_len: int = 600, cover_content: int = 150
+    ):
+        chunk_text = []
+
+        nlp = spacy.load("zh_core_web_sm")
+        doc = nlp(text)
+        for s in doc.sents:
+            chunk_text.append(s)
+        import pdb
+
+        pdb.set_trace()
+        return chunk_text
+
+    @classmethod
     def read_file_content(cls, file_path: str):
         # 根据文件扩展名选择读取方法
         if file_path.endswith(".pdf"):
@@ -103,3 +126,39 @@ class ReadFiles:
             for page_num in range(len(reader.pages)):
                 text += reader.pages[page_num].extract_text()
             return text
+
+    @classmethod
+    def read_pdf_by_pymupdf(cls, file_path: str):
+        # 读取PDF文件
+        with open(file_path, "rb") as file:
+            doc = fitz.open(file)
+            text = ""
+            num_pages = doc.page_count
+            for page_index in range(num_pages):
+                page = doc.load_page(page_index)
+                text += page.get_text()
+            return text
+
+    @classmethod
+    def read_pdf_by_unstructured(cls, file_path: str):
+        from llama_parse import LlamaParse
+
+        # 创建一个LlamaParse对象，传入OpenAIAPIKey和注册后获得的LlamaParseAPIKey。
+        parser_gpt4o = LlamaParse(
+            result_type="markdown",
+            api_key="llx-TqVzvRvIPVrplEHnJ4BxSzp1rD5vfPtIBQQSOv5cyZvk9VAz",
+        )
+        pdf_file = "data/demo.pdf"
+        pkl_file = "output/demo.pkl"
+        if not os.path.exists(pkl_file):
+            # 将PDF文件转换为Markdown格式内容
+            documents_gpt4o = parser_gpt4o.load_data(pdf_file)
+            # 转换后的Markdown内容将保存在demo. pkl文件中
+            pickle.dump(documents_gpt4o, open(pkl_file, "wb"))
+        else:
+            # 将转换后的Markdown内容保存到documents_gpt4o变量中
+            documents_gpt4o = pickle.load(open(pkl_file, "rb"))
+        return_text = []
+        for i in range(len(documents_gpt4o)):
+            return_text.append(documents_gpt4o[i].text)
+        return "".join(return_text)
