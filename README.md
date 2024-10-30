@@ -7,13 +7,14 @@ A tiny RAG system.
   - [模块](#模块)
   - [项目结构](#项目结构)
   - [QuickStart](#quickstart)
-  - [Todo](#todo)
+  - [TODO](#todo)
 
 
 项目参考 [QAnything](https://github.com/netease-youdao/qanything) 的设计并在 [KMnO4-zx/TinyRAG](https://github.com/KMnO4-zx/TinyRAG) 项目的基础之上进行了二次开发，增加了以下功能：
 
 - 增加Faiss向量数据库支持
 - 增加基于Gradio的web支持
+- 基于gpt和spacy的pdf文档分块
 
 并对部分功能进行删减：
 
@@ -33,7 +34,7 @@ A tiny RAG system.
 - 重排模块：使用检索（召回）模块的结果，使用bge重排模型进行重排
 - 模型模块：用来根据检索出来的文档和用户的输入，回答用户的问题
   - 多轮对话
-    - 直接在history数据结构中记录过往的对话的rule和content
+    - 直接在history数据结构中记录过往全量对话的rule和content
 
 ## 项目结构
 
@@ -92,16 +93,23 @@ python3 web_demo.py
 http://localhost:9001/
 ```
 
-## Todo
+## TODO
 
 - 对比不同embedding对结果的影响
 - reranker和召回模型尽量不适用相同的base model
   - 多路召回：不同embedding数据库的向量召回 + 关键词搜索
+    - 字面相似 + 向量相似性
+    - 加权融合分数、取各自topk检索后并集或者RRF+Rerank
   - 单路召回：便于数据管理，尤其是多模态场景
 - 多轮对话
   - 直接将之前的对话结果传入模型会造成冗余，不精确
-  - 尝试
+  - 不同的策略适用于不同的场景
     - 使用模型对历史会话做总结
+      - 历史所有对话做整体总结
+      - 对较早的对话做总结，较新的对话保留原文
+    - 构建历史对话向量数据库
+    - 滑动窗口方式
+    - NER提取历史对话中的实体信息
     - 人为对query做意图理解
 - 知识库构建
   - 细粒度知识要怎么保证简洁、精准
@@ -110,5 +118,11 @@ http://localhost:9001/
     - 多级检索方案
       - 一级索引关键信息：关键信息可以是段落的摘要的embedding
       - 二级索引原始文本
+    - 基于 bert 的 NSP 方案
+  - PDF 版面分析
+  - 多种文件格式支持
+  - 多模态支持
+    - 1. 原始图片转为embedding
+    - 2. 使用多模态模型获取图片的summary保存为embedding
 - 结果评估
   - 人工
