@@ -40,7 +40,7 @@ class ReadFiles:
         docs = []
         # 读取文件内容
         for file in self.file_list:
-            content = self.read_pdf_by_unstructured(file)
+            content = self.read_pdf_by_llama_parse(file)
             chunk_content = self.get_chunk_by_spacy(
                 content, max_token_len=max_token_len, cover_content=cover_content
             )
@@ -91,7 +91,6 @@ class ReadFiles:
 
         if curr_chunk:
             chunk_text.append(curr_chunk)
-
         return chunk_text
 
     @classmethod
@@ -103,10 +102,7 @@ class ReadFiles:
         nlp = spacy.load("zh_core_web_sm")
         doc = nlp(text)
         for s in doc.sents:
-            chunk_text.append(s)
-        import pdb
-
-        pdb.set_trace()
+            chunk_text.append(s.text)
         return chunk_text
 
     @classmethod
@@ -140,11 +136,11 @@ class ReadFiles:
             return text
 
     @classmethod
-    def read_pdf_by_unstructured(cls, file_path: str):
+    def read_pdf_by_llama_parse(cls, file_path: str):
         from llama_parse import LlamaParse
 
         # 创建一个LlamaParse对象，传入OpenAIAPIKey和注册后获得的LlamaParseAPIKey。
-        parser_gpt4o = LlamaParse(
+        parser_gpt = LlamaParse(
             result_type="markdown",
             api_key="llx-TqVzvRvIPVrplEHnJ4BxSzp1rD5vfPtIBQQSOv5cyZvk9VAz",
         )
@@ -152,13 +148,13 @@ class ReadFiles:
         pkl_file = "output/demo.pkl"
         if not os.path.exists(pkl_file):
             # 将PDF文件转换为Markdown格式内容
-            documents_gpt4o = parser_gpt4o.load_data(pdf_file)
+            documents_gpt = parser_gpt.load_data(pdf_file)
             # 转换后的Markdown内容将保存在demo. pkl文件中
-            pickle.dump(documents_gpt4o, open(pkl_file, "wb"))
+            pickle.dump(documents_gpt, open(pkl_file, "wb"))
         else:
-            # 将转换后的Markdown内容保存到documents_gpt4o变量中
-            documents_gpt4o = pickle.load(open(pkl_file, "rb"))
+            # 将转换后的Markdown内容保存到documents_gpt变量中
+            documents_gpt = pickle.load(open(pkl_file, "rb"))
         return_text = []
-        for i in range(len(documents_gpt4o)):
-            return_text.append(documents_gpt4o[i].text)
+        for i in range(len(documents_gpt)):
+            return_text.append(documents_gpt[i].text)
         return "".join(return_text)

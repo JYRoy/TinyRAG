@@ -35,4 +35,4 @@ demo = gr.ChatInterface(
     title="TinyRAG",
     theme="soft",
 )
-demo.launch(server_name="0.0.0.0", server_port=9001, share=True, inbrowser=True)
+demo.launch(server_name="localhost", server_port=9002, share=True, inbrowser=True)

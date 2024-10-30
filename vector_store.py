@@ -75,5 +75,4 @@ class FaissVetoreStore:
         query_vector = EmbeddingModel.get_embedding(query)
         query_vector = np.array([query_vector]).astype("float32")
         distance, index_result = self.index.search(query_vector, k)
-
         return np.array(self.document)[index_result.argsort()[-k:]].tolist()
