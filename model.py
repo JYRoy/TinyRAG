@@ -10,6 +10,12 @@ PROMPT_TEMPLATE = dict(
         ···
         如果给定的上下文无法让你做出回答，请回答数据库中没有这个内容，你不知道。
         有用的回答:""",
+    HISTORY_TEMPLATE="""
+        请对给出的对话历史进行总结，对话历史为：
+        ···
+        {history}
+        ···
+    """,
 )
 
 
@@ -31,9 +37,11 @@ class ZhipuChat(BaseModel):
 
         self.client = ZhipuAI(api_key=os.getenv("ZHIPUAI_API_KEY"))
         self.model = model
+        self.history_window = 2  # 必须为偶数值
+        self.history: List[Dict] = []
 
-    def chat(self, prompt: str, history: List[Dict], content: str) -> str:
-        history.append(
+    def chat(self, prompt: str, content: str) -> str:
+        self.history.append(
             {
                 "role": "user",
                 "content": PROMPT_TEMPLATE["RAG_PROMPT_TEMPALTE"].format(
@@ -41,7 +49,51 @@ class ZhipuChat(BaseModel):
                 ),
             }
         )
+
+        self.history = self.sum_history()
+
         response = self.client.chat.completions.create(
-            model=self.model, messages=history, max_tokens=150, temperature=0.1
+            model=self.model, messages=self.history, max_tokens=150, temperature=0.1
+        )
+        self.history.append(
+            {
+                "role": "assistant",
+                "content": response.choices[0].message.content,
+            }
         )
         return response.choices[0].message.content
+
+    def sum_history(self):
+        if len(self.history) - 1 > self.history_window:
+            lens = len(self.history)
+            summary_str = self.history[0 : lens - self.history_window + 1]
+            formatted_strings = [
+                ", ".join(f"{key}, {value}" for key, value in d.items())
+                for d in summary_str
+            ]
+            result_string = "，".join(formatted_strings)
+            history_message = [
+                {
+                    "role": "user",
+                    "content": PROMPT_TEMPLATE["HISTORY_TEMPLATE"].format(
+                        history=result_string
+                    ),
+                }
+            ]
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=history_message,
+                max_tokens=300,
+                temperature=0.1,
+            )
+
+            summary = [
+                {"role": "assistant", "content": response.choices[0].message.content}
+            ]
+
+            summary.extend(self.history[lens - self.history_window + 1 :])
+
+            return summary
+        else:
+            return self.history

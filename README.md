@@ -35,6 +35,7 @@ A tiny RAG system.
 - 模型模块：用来根据检索出来的文档和用户的输入，回答用户的问题
   - 多轮对话
     - 直接在history数据结构中记录过往全量对话的rule和content
+    - 支持聊天记录的向量数据库存储
 
 ## 项目结构
 
@@ -62,6 +63,12 @@ A tiny RAG system.
   - 使用Gradio可视化
 
 ## QuickStart
+
+配置 huggingface 镜像代理
+
+```shell
+export HF_ENDPOINT=https://hf-mirror.com
+```
 
 安装依赖包
 

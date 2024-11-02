@@ -7,6 +7,9 @@ from embedding import ZhipuEmbedding, BgeEmbedding
 from reranker import BgeReranker
 
 
+chat_model = ZhipuChat()
+
+
 def chat(message, history):
     docs = ReadFiles("./data").get_content(
         max_token_len=600, cover_content=150
@@ -22,8 +25,7 @@ def chat(message, history):
     rerank_content = reranker.rerank(message, content[0], k=10)
     best_content = rerank_content[0]
 
-    chat = ZhipuChat()
-    yield chat.chat(message, [], best_content)
+    yield chat_model.chat(message, best_content)
 
 
 demo = gr.ChatInterface(
