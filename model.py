@@ -1,5 +1,8 @@
 import os
 from typing import Dict, List, Optional, Tuple, Union
+from vector_store import VectorStore, FaissVetoreStore
+import faiss
+from embedding import BaseEmbeddings, BgeEmbedding
 
 PROMPT_TEMPLATE = dict(
     RAG_PROMPT_TEMPALTE="""使用以上下文来回答用户的问题。如果你不知道答案，就说你不知道。总是使用中文回答。
@@ -31,7 +34,12 @@ class BaseModel:
 
 
 class ZhipuChat(BaseModel):
-    def __init__(self, path: str = "", model: str = "glm-4-plus") -> None:
+    def __init__(
+        self,
+        path: str = "",
+        model: str = "glm-4-plus",
+        embedding_model: BaseEmbeddings = BgeEmbedding,
+    ) -> None:
         super().__init__(path)
         from zhipuai import ZhipuAI
 
@@ -39,6 +47,10 @@ class ZhipuChat(BaseModel):
         self.model = model
         self.history_window = 2  # 必须为偶数值
         self.history: List[Dict] = []
+        self.vector_store = FaissVetoreStore()
+        self.embedding_model = embedding_model()
+        self.vector_store.get_vector(self.embedding_model)
+        self.all_history = []
 
     def chat(self, prompt: str, content: str) -> str:
         self.history.append(
@@ -49,6 +61,9 @@ class ZhipuChat(BaseModel):
                 ),
             }
         )
+        self.all_history.append(self.history[-1])
+        if len(self.history) > 1:
+            self.search_history(self.history[-1]["content"])
 
         self.history = self.sum_history()
 
@@ -61,7 +76,20 @@ class ZhipuChat(BaseModel):
                 "content": response.choices[0].message.content,
             }
         )
+        self.all_history.append(self.history[-1])
+        self.save_history_to_faiss(self.history[-1])
         return response.choices[0].message.content
+
+    def save_history_to_faiss(self, new_history: Dict):
+        if new_history["role"] == "assistant":
+            self.vector_store.update(self.embedding_model, new_history["content"])
+
+    def search_history(self, query):
+        matched_query = self.vector_store.query_history(
+            query=query, EmbeddingModel=self.embedding_model, k=1
+        )
+        import pdb; pdb.set_trace()
+        return self.all_history[matched_query]
 
     def sum_history(self):
         if len(self.history) - 1 > self.history_window:

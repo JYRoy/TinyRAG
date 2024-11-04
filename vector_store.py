@@ -76,3 +76,16 @@ class FaissVetoreStore:
         query_vector = np.array([query_vector]).astype("float32")
         distance, index_result = self.index.search(query_vector, k)
         return np.array(self.document)[index_result.argsort()[-k:]].tolist()
+
+    def update(self, EmbeddingModel: BaseEmbeddings, content: str):
+        self.index.add(EmbeddingModel.get_embedding(content))
+
+    def query_history(
+        self, query: str, EmbeddingModel: BaseEmbeddings, k: int = 1
+    ) -> List[str]:
+        # 根据问题检索相关的文档片段
+        query_vector = EmbeddingModel.get_embedding(text=query)
+        query_vector = np.array([query_vector]).astype("float32")
+        import pdb; pdb.set_trace()
+        distance, index_result = self.index.search(query_vector, k)
+        return index_result.argsort()[-k:]
