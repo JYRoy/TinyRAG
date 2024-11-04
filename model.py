@@ -63,8 +63,11 @@ class ZhipuChat(BaseModel):
         )
         self.all_history.append(self.history[-1])
         if len(self.history) > 1:
-            self.search_history(self.history[-1]["content"])
+            history_response = self.search_history(self.history[-1]["content"])
+            if history_response != None:
+                return history_response["content"]
 
+        self.save_history_to_faiss(self.history[-1])
         self.history = self.sum_history()
 
         response = self.client.chat.completions.create(
@@ -77,19 +80,20 @@ class ZhipuChat(BaseModel):
             }
         )
         self.all_history.append(self.history[-1])
-        self.save_history_to_faiss(self.history[-1])
         return response.choices[0].message.content
 
     def save_history_to_faiss(self, new_history: Dict):
-        if new_history["role"] == "assistant":
+        if new_history["role"] == "user":
             self.vector_store.update(self.embedding_model, new_history["content"])
 
     def search_history(self, query):
-        matched_query = self.vector_store.query_history(
+        distance, matched_query = self.vector_store.query_history(
             query=query, EmbeddingModel=self.embedding_model, k=1
         )
-        import pdb; pdb.set_trace()
-        return self.all_history[matched_query]
+
+        if distance < 0.01:
+            return self.all_history[matched_query[0][0] + 1]
+        return None
 
     def sum_history(self):
         if len(self.history) - 1 > self.history_window:
