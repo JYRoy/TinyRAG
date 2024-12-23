@@ -11,6 +11,8 @@ from llama_index.readers.file import FlatReader
 from llama_index.core.node_parser import UnstructuredElementNodeParser
 from llama_index.core.schema import IndexNode, TextNode
 from llama_index.core.node_parser import SimpleNodeParser
+import pdfplumber
+from PyPDF2 import PdfReader
 
 enc = tiktoken.get_encoding("cl100k_base")
 
@@ -23,6 +25,7 @@ class ReadFiles:
     def __init__(self, path: str) -> None:
         self._path = path
         self.file_list = self.get_files()
+        self.data = []
 
     def get_files(self):
         # args：dir_path，目标文件夹路径
@@ -158,3 +161,209 @@ class ReadFiles:
         for i in range(len(documents_gpt)):
             return_text.append(documents_gpt[i].text)
         return "".join(return_text)
+
+    def sliding_window(self, sentences, kernel=512, stride=1):
+        sz = len(sentences)
+        cur = ""
+        fast = 0
+        slow = 0  # 慢指针指向窗口的起始句子
+        while fast < len(sentences):
+            sentence = sentences[fast]  # 快指针指向当前句子
+            if len(cur + sentence) > kernel and (cur + sentence) not in self.data:
+                # 如果合并之后会超过最大长度，并且当前内容不在 data 中，则合并在一起添加到 data 中
+                self.data.append(cur + sentence + "。")
+                cur = cur[len(sentences[slow] + "。") :]  # 去掉slow指向的当前窗口的第一个句子，使用后面的内容来滑动窗口
+                slow = slow + 1  # 慢指针向前移动，指向下一个句子
+            # 如果还没有超过最大长度，继续合并
+            cur = cur + sentence + "。"
+            fast = fast + 1
+
+    def data_filter(self, line, header, pageid, max_seq=1024):
+        # 数据过滤，根据当前的文档内容的 item 划分句子，然后根据 max_seq 划分文档块。
+        sz = len(line)
+        if sz < 6:
+            return
+
+        if sz > max_seq:
+            # 对于列表的情况，使用列表的方式进行划分
+            if "■" in line:
+                sentences = line.split("■")
+            elif "•" in line:
+                sentences = line.split("•")
+            # 对于换行或者不同的子句子，使用换行符和句号进行划分
+            elif "\t" in line:
+                sentences = line.split("\t")
+            else:
+                sentences = line.split("。")
+
+            # 按照换行拆成子句添加
+            for subsentence in sentences:
+                subsentence = subsentence.replace("\n", "")
+
+                if len(subsentence) < max_seq and len(subsentence) > 5:
+                    subsentence = (
+                        subsentence.replace(",", "").replace("\n", "").replace("\t", "")
+                    )
+                    if subsentence not in self.data:
+                        self.data.append(subsentence)
+        else:
+            # 没有超过最大长度，直接添加
+            line = line.replace("\n", "").replace(",", "").replace("\t", "")
+            if line not in self.data:
+                self.data.append(line)
+
+    def get_header(self, page):
+        # 提取页头即一级标题
+        try:
+            lines = page.extract_words()[::]
+        except:
+            return None
+        if len(lines) > 0:
+            for line in lines:
+                if "目录" in line["text"] or ".........." in line["text"]:
+                    return None
+                # if line["top"] < 20 and line["top"] > 17:  # 页头在 17-20 之间
+                #     return line["text"]
+            return lines[0]["text"]
+        return None
+
+    def parse_block(self, max_seq=1024):
+        # 按照每页中块提取内容,并和一级标题进行组合,配合 Document 可进行意图识别
+        # 尽可能保证一个小标题和对应的文档内容进行组合
+        # 同时限定一个最大长度
+
+        with pdfplumber.open(self._path) as pdf:
+
+            for i, p in enumerate(pdf.pages):
+                header = self.get_header(p)
+
+                if header == None:
+                    continue
+
+                texts = p.extract_words(use_text_flow=True, extra_attrs=["size"])[::]
+
+                squence = ""
+                lastsize = 0
+
+                for idx, line in enumerate(texts):
+                    if idx < 1:  # 跳过 header
+                        continue
+                    if idx == 1:
+                        if line["text"].isdigit():  # 跳过页脚的页码
+                            continue
+
+                    cursize = line["size"]  # 字体大小
+                    text = line["text"]
+                    if text == "□" or text == "•":
+                        continue
+                    elif (
+                        text == "警告！" or text == "注意！" or text == "说明！"
+                    ):  # 表示这是一整块内容，要放在一起
+                        if len(squence) > 0:  # 判断上一行是否有内容
+                            self.data_filter(squence, header, i, max_seq=max_seq)
+                        squence = ""
+                    elif format(lastsize, ".5f") == format(
+                        cursize, ".5f"
+                    ):  # 字体大小相同，说明是一个级别的内容，要合并到一起
+                        if len(squence) > 0:
+                            squence = squence + text
+                        else:
+                            squence = text
+                    else:
+                        # 当前内容是一页内容的开头
+                        lastsize = cursize
+                        if (
+                            len(squence) < 15 and len(squence) > 0
+                        ):  # 上一行是当前内容的小标题
+                            squence = squence + text
+                        else:
+                            if len(squence) > 0:
+                                self.data_filter(squence, header, i, max_seq=max_seq)
+                            squence = text
+                if len(squence) > 0:
+                    self.data_filter(squence, header, i, max_seq=max_seq)
+
+    def parse_one_page_with_rule(self, max_seq=512, min_len=6):
+        # 按句号划分文档，然后利用最大长度划分文档块
+
+        for idx, page in enumerate(PdfReader(self._path).pages):
+            page_content = ""
+            text = page.extract_text()
+            words = text.split("\n")
+            for idx, word in enumerate(words):
+                text = word.strip().strip("\n")
+                if "...................." in text or "目录" in text:
+                    continue
+                if len(text) < 1:
+                    continue
+                if text.isdigit():
+                    continue
+                page_content = page_content + text  # 将有内容的行拼接在一起
+            if len(page_content) < min_len:
+                continue
+            if len(page_content) < max_seq:
+                if page_content not in self.data:
+                    self.data.append(page_content)
+            else:
+                sentences = page_content.split("。")  # 按照句子进行划分
+                cur = ""
+                for idx, sentence in enumerate(sentences):
+                    # 如果没有达到最大长度，就一直拼接句子
+                    # 到了最大程度，就添加到data中然后重新开始拼接后面的句子
+                    if (
+                        len(cur + sentence) > max_seq
+                        and (cur + sentence) not in self.data
+                    ):
+                        self.data.append(cur + sentence)
+                        cur = sentence
+                    else:
+                        cur = cur + sentence
+
+    def parse_all_page(self, max_seq=512, min_len=6):
+        #  滑窗法提取段落
+        #  1. 把 pdf 看做一个整体,作为一个字符串
+        #  2. 利用句号当做分隔符,切分成一个数组
+        #  3. 利用滑窗法对数组进行滑动, 此处的
+        # 作用：处理文本内容的跨页连续性问题
+        all_content = ""
+        # pdf 作为一个整体
+        for idx, page in enumerate(PdfReader(self._path).pages):
+            page_content = ""
+            text = page.extract_text()
+            words = text.split("\n")
+            for idx, word in enumerate(words):
+                text = word.strip().strip("\n")
+                if "...................." in text or "目录" in text:
+                    continue
+                if len(text) < 1:
+                    continue
+                if text.isdigit():
+                    continue
+                page_content = page_content + text
+            if len(page_content) < min_len:
+                continue
+            all_content = all_content + page_content
+        # 然后按照句号进行切分
+        sentences = all_content.split("。")
+        # 在句子间进行滑动窗口
+        self.sliding_window(sentences, kernel=max_seq)
+
+
+if __name__ == "__main__":
+    dp = ReadFiles(path="./data/train_a.pdf")
+    dp.parse_block(max_seq=1024)
+    dp.parse_block(max_seq=512)
+    print(len(dp.data))
+    dp.parse_all_page(max_seq=256)
+    dp.parse_all_page(max_seq=512)
+    print(len(dp.data))
+    dp.parse_one_page_with_rule(max_seq=256)
+    dp.parse_one_page_with_rule(max_seq=512)
+    print(len(dp.data))
+    data = dp.data
+    out = open("all_text.txt", "w")
+    for line in data:
+        line = line.strip("\n")
+        out.write(line)
+        out.write("\n")
+    out.close()
