@@ -1,7 +1,7 @@
 import time
 import json
 from loader import ReadFiles
-from vector_store import FaissRetriever, BM25, TFIDF
+from retriever import FaissRetriever, BM25, TFIDF
 from reranker import reRankLLM
 from model import ChatLLM
 
@@ -369,7 +369,7 @@ if __name__ == "__main__":
                 bce_faiss_context,
                 bm25_context,
                 tfidf_context,
-                query
+                query,
             )
 
             # 构造bm25召回的prompt
@@ -379,7 +379,9 @@ if __name__ == "__main__":
             emb_inputs = get_rerank(m3e_emb_ans, query)
 
             # 使用 bge rerank m3e 和 bm25 召回的候选，并按照相关性得分排序
-            rerank_m3e_bm25_ans = reRank(bge_rerank, 6, query, bm25_context, m3e_faiss_context)
+            rerank_m3e_bm25_ans = reRank(
+                bge_rerank, 6, query, bm25_context, m3e_faiss_context
+            )
 
             # 使用 bge rerank 多路召回的候选，并按照相关性得分排序
             bge_rerank_all_ans = reRankAll(
