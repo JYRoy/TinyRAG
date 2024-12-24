@@ -27,6 +27,14 @@ PROMPT_TEMPLATE = dict(
     """,
 )
 
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+DEVICE = LLM_DEVICE
+DEVICE_ID = "0"
+CUDA_DEVICE = f"{DEVICE}:{DEVICE_ID}" if DEVICE_ID else DEVICE
+
+IMEND = "<|im_end|>"
+ENDOFTEXT = "<|endoftext|>"
 
 # 获取stop token的id
 def get_stop_words_ids(chat_format, tokenizer):
