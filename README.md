@@ -10,16 +10,13 @@ A tiny RAG system.
   - [TODO](#todo)
 
 
-项目参考 [QAnything](https://github.com/netease-youdao/qanything) 的设计并在 [KMnO4-zx/TinyRAG](https://github.com/KMnO4-zx/TinyRAG) 项目的基础之上进行了二次开发，增加了以下功能：
+项目参考 [QAnything](https://github.com/netease-youdao/qanything) 和 [KMnO4-zx/TinyRAG](https://github.com/KMnO4-zx/TinyRAG) 项目的设计，完成了一个基于vLLM的PDF文档检索问答RAG，项目的主要特性：
 
-- 增加Faiss向量数据库支持
+- 增加PDF分句、分块和滑动窗口的支持
+- 增加Faiss向量召回和BM25召回的支持
+- 增加基于BGE模型的重排支持
+- 增加vLLM推理的支持
 - 增加基于Gradio的web支持
-- 基于gpt和spacy的pdf文档分块
-
-并对部分功能进行删减：
-
-- Embedding模块只支持BGEEmbedding和ZHIPU API方式的embedding
-- 模型模块只支持ZHIPU的glm-4-plus模型的对话
 
 ## 设计
 
@@ -28,21 +25,25 @@ A tiny RAG system.
 ## 模块
 
 - 文档加载和切分模块：用来加载文档并切分成文档片段，支持pdf文件
-- 向量化模块：用来将切分后的文档片段向量化，使用bge模型
-- 数据库：存放文档片段和对应的向量，使用faiss向量数据库
-- 检索（召回）模块：实现单路召回用来根据 Query （问题）检索相关的文档片段，在faiss数据库中召回top-n
+- 向量化模块：用来将切分后的文档片段向量化，支持m3e和bge embedding模型
+- 检索（召回）模块：实现多路召回用来根据 Query （问题）检索相关的文档片段，支持faiss向量召回和BM25召回
 - 重排模块：使用检索（召回）模块的结果，使用bge重排模型进行重排
 - 模型模块：用来根据检索出来的文档和用户的输入，回答用户的问题
-  - 多轮对话
+  - online模式下支持多轮对话
     - 支持全量历史对话和长短时记忆历史对话
     - 支持聊天记录的向量数据库存储
+  - offline模式下支持多路召回和单路召回验证
+    - 支持无答案判断
 
 ## 项目结构
 
 - loader.py
-  - ReadFiles：用于读取并分割pdf文件，实现了两种解析pdf的方式
+  - ReadFiles：用于读取并分割pdf文件，实现了五种解析pdf的方式
     - 第一种：使用PyPDF2库直接对文本解析，缺点是无法很好的处理表格和不同级别的内容；
     - 第二种：使用llama_parser库将pdf文件转换为markdown文件，优点是可以保留不同标题级别，解析出表格和图片（是使用多模态模型），缺点是准确率比较低，且llama_parser库依赖OpenAI访问；
+    - 第三种：使用pdfplumber库的块状解析，以字体大小作为基本规则；
+    - 第四种：使用PyPDF2库，并根据句号进行句子分割；
+    - 第五种：按照句子的滑动窗口进行切分；
   - get_chunk：将内容分块，实现了两种分块方式
     - 第一种：递归字符切分方式，设置一个chunk_size作为当前窗口长度和一个cover_content作为重叠内容长度，以行为单位进行切分，对于一行内容长度超过chunk_size + cover_content长度的，切分为多个块，否则按行保留内容。有点是可以限制分块长度便于管理，缺点是无法保证上下文的连贯性（cover_content就是为了尽可能减小这部分的损失的），尤其是跨行和跨段落的内容；
     - 第二种：使用spacy库，直接切分，因为spacy库中的模型都是已经训练过的，所以基于spacy的优点是可以根据上下文进行更高质量的切分；
@@ -52,13 +53,18 @@ A tiny RAG system.
   - ZhipuEmbedding：通过zhipu api获取字符串对应的embedding向量
 - vector_store.py
   - VectorStore：采用本地json存储分割后的文档以及embedding的方式
-  - FaissVectorStore：使用Faiss数据库存储embedding的方式
+  - FaissVectorStore：使用本地部署的Faiss数据库存储embedding的方式
+  - BM25：基于langchain的BM25Retriever
+  - FaissRetriever：基于langchain的faiss的向量数据库
 - reranker.py
   - BgeReranker：使用BEG ReRanker模型对召回的结果进行重排
 - model.py
   - ZhipuChat：支持使用zhipu glm-4-plus模型进行多轮对话
+  - ChatLLM：支持基于vLLM的Qwen模型对话
 - local_demo.py
   - 作为基于json和基于faiss数据库对话的测试文件
+- run_offline.py
+  - 离线推理模式
 - web_demo.py
   - 使用Gradio可视化
 
@@ -98,6 +104,12 @@ python3 web_demo.py
 
 ```shell
 http://localhost:9001/
+```
+
+离线推理：
+
+```shell
+python3 run_offline.py
 ```
 
 ## TODO
