@@ -9,23 +9,8 @@ import time
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers import GenerationConfig
 from qwen_generation_utils import make_context, decode_tokens, get_stop_words_ids
-
-PROMPT_TEMPLATE = dict(
-    RAG_PROMPT_TEMPALTE="""使用以上下文来回答用户的问题。如果你不知道答案，就说你不知道。总是使用中文回答。
-        问题: {question}
-        可参考的上下文：
-        ···
-        {context}
-        ···
-        如果给定的上下文无法让你做出回答，请回答数据库中没有这个内容，你不知道。
-        有用的回答:""",
-    HISTORY_TEMPLATE="""
-        请对给出的对话历史进行总结，对话历史为：
-        ···
-        {history}
-        ···
-    """,
-)
+from baichuan2_generation_utils import build_chat_input
+from chatglm3_generation_utils import process_chatglm_messages
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -35,6 +20,7 @@ CUDA_DEVICE = f"{DEVICE}:{DEVICE_ID}" if DEVICE_ID else DEVICE
 
 IMEND = "<|im_end|>"
 ENDOFTEXT = "<|endoftext|>"
+
 
 # 获取stop token的id
 def get_stop_words_ids(chat_format, tokenizer):
@@ -55,118 +41,10 @@ def torch_gc():
             torch.cuda.ipc_collect()
 
 
-class BaseModel:
-    def __init__(self, path: str = "") -> None:
-        self.path = path
-
-    def chat(self, prompt: str, history: List[dict], content: str) -> str:
-        pass
-
-    def load_model(self):
-        pass
-
-
-class ZhipuChat(BaseModel):
-    def __init__(
-        self,
-        path: str = "",
-        model: str = "glm-4-plus",
-        embedding_model: BaseEmbeddings = BgeEmbedding,
-    ) -> None:
-        super().__init__(path)
-        from zhipuai import ZhipuAI
-
-        self.client = ZhipuAI(api_key=os.getenv("ZHIPUAI_API_KEY"))
-        self.model = model
-        self.history_window = 2  # 必须为偶数值
-        self.history: List[Dict] = []
-        self.vector_store = FaissVetoreStore()
-        self.embedding_model = embedding_model()
-        self.vector_store.get_vector(self.embedding_model)
-        self.all_history = []
-
-    def chat(self, prompt: str, content: str) -> str:
-        self.history.append(
-            {
-                "role": "user",
-                "content": PROMPT_TEMPLATE["RAG_PROMPT_TEMPALTE"].format(
-                    question=prompt, context=content
-                ),
-            }
-        )
-        self.all_history.append(self.history[-1])
-        if len(self.history) > 1:
-            history_response = self.search_history(self.history[-1]["content"])
-            if history_response != None:
-                return history_response["content"]
-
-        self.save_history_to_faiss(self.history[-1])
-        self.history = self.sum_history()
-
-        response = self.client.chat.completions.create(
-            model=self.model, messages=self.history, max_tokens=150, temperature=0.1
-        )
-        self.history.append(
-            {
-                "role": "assistant",
-                "content": response.choices[0].message.content,
-            }
-        )
-        self.all_history.append(self.history[-1])
-        return response.choices[0].message.content
-
-    def save_history_to_faiss(self, new_history: Dict):
-        if new_history["role"] == "user":
-            self.vector_store.update(self.embedding_model, new_history["content"])
-
-    def search_history(self, query):
-        distance, matched_query = self.vector_store.query_history(
-            query=query, EmbeddingModel=self.embedding_model, k=1
-        )
-
-        if distance < 0.01:
-            return self.all_history[matched_query[0][0] + 1]
-        return None
-
-    def sum_history(self):
-        if len(self.history) - 1 > self.history_window:
-            lens = len(self.history)
-            summary_str = self.history[0 : lens - self.history_window + 1]
-            formatted_strings = [
-                ", ".join(f"{key}, {value}" for key, value in d.items())
-                for d in summary_str
-            ]
-            result_string = "，".join(formatted_strings)
-            history_message = [
-                {
-                    "role": "user",
-                    "content": PROMPT_TEMPLATE["HISTORY_TEMPLATE"].format(
-                        history=result_string
-                    ),
-                }
-            ]
-
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=history_message,
-                max_tokens=300,
-                temperature=0.1,
-            )
-
-            summary = [
-                {"role": "assistant", "content": response.choices[0].message.content}
-            ]
-
-            summary.extend(self.history[lens - self.history_window + 1 :])
-
-            return summary
-        else:
-            return self.history
-
-
 class ChatLLM(object):
 
     def __init__(self, model_path):
+        self.model_path = model_path
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_path,
             pad_token="<|extra_0|>",
@@ -214,8 +92,18 @@ class ChatLLM(object):
         }
         self.sampling_params = SamplingParams(**sampling_kwargs)
 
-    # 批量推理，输入一个batch，返回一个batch的答案
     def infer(self, prompts):
+        if "qwen" in self.model_path or "Qwen" in self.model_path:
+            return self.infer_qwen(prompts)
+        elif "chatglm" in self.model_path or "ChatGLM" in self.model_path:
+            return self.infer_chatglm(prompts)
+        elif "baichuan" in self.model_path or "Baichuan" in self.model_path:
+            return self.infer_baichuan(prompts)
+        else:
+            raise NotImplementedError(f"Unknown model {self.model_path!r}")
+
+    # 批量推理，输入一个batch，返回一个batch的答案
+    def infer_qwen(self, prompts):
         batch_text = []
         for q in prompts:
             raw_text, _ = make_context(
@@ -238,14 +126,77 @@ class ChatLLM(object):
         torch_gc()
         return batch_response
 
+    def infer_baichuan(self, prompts):
+        batch_tokens = []
+        for q in prompts:
+            context_tokens = build_chat_input(
+                self.model,
+                self.tokenizer,
+                q,
+                max_window_size=self.generation_config.max_new_tokens,
+            )
+            raw_text = self.tokenizer.decode(context_tokens)
+            batch_tokens.append(raw_text)
+        outputs = self.model.generate(
+            batch_tokens, sampling_params=self.sampling_params
+        )
+        batch_response = []
+        for output in outputs:
+            output_str = output.outputs[0].text
+            if IMEND in output_str:
+                output_str = output_str[: -len(IMEND)]
+            if ENDOFTEXT in output_str:
+                output_str = output_str[: -len(ENDOFTEXT)]
+            batch_response.append(output_str)
+        torch_gc()
+        return batch_response
+
+    def infer_chatglm(self, prompts):
+        batch_tokens = []
+        for q in prompts:
+            raw_text = process_chatglm_messages(
+                q,
+            )
+            batch_tokens.append(raw_text)
+        outputs = self.model.generate(
+            batch_tokens, sampling_params=self.sampling_params
+        )
+        batch_response = []
+        for output in outputs:
+            output_str = output.outputs[0].text
+            if IMEND in output_str:
+                output_str = output_str[: -len(IMEND)]
+            if ENDOFTEXT in output_str:
+                output_str = output_str[: -len(ENDOFTEXT)]
+            batch_response.append(output_str)
+        torch_gc()
+        return batch_response
+
 
 if __name__ == "__main__":
     base = "."
-    qwen7 = base + "/model/Qwen-7B-Chat"
-    start = time.time()
-    llm = ChatLLM(qwen7)
+    qwen_7b = base + "/model/Qwen-7B-Chat"
+    chatglm3_6b = base + "/model/ChatGLM3-6B"
+    baichuan2_7b = base + "/model/Baichuan2-7B-Chat"
     test = ["吉利汽车座椅按摩", "吉利汽车语音组手唤醒", "自动驾驶功能介绍"]
-    generated_text = llm.infer(test)
-    print(generated_text)
+
+    start = time.time()
+    llm_qwen_7b = ChatLLM(qwen_7b)
+    qwen_7b_generated_text = llm_qwen_7b.infer(test)
+    print(qwen_7b_generated_text)
     end = time.time()
-    print("cost time: " + str((end - start) / 60))
+    print("qwen7b cost time: " + str((end - start) / 60))
+
+    start = time.time()
+    llm_chatglm3_6b = ChatLLM(chatglm3_6b)
+    chatglm3_6b_generated_text = llm_chatglm3_6b.infer(test)
+    print(chatglm3_6b_generated_text)
+    end = time.time()
+    print("chatglm3_6b cost time: " + str((end - start) / 60))
+
+    start = time.time()
+    llm_baichuan2_7b = ChatLLM(baichuan2_7b)
+    baichuan2_7b_generated_text = llm_baichuan2_7b.infer(test)
+    print(baichuan2_7b_generated_text)
+    end = time.time()
+    print("baichuan2_7b cost time: " + str((end - start) / 60))
