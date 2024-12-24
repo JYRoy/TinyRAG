@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple, Union
 from vector_store import VectorStore, FaissVetoreStore
 from embedding import BaseEmbeddings, BgeEmbedding
 import torch
-import config
+from config import *
 from vllm import LLM, SamplingParams
 import time
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -42,7 +42,7 @@ def get_stop_words_ids(chat_format, tokenizer):
 # 释放gpu显存
 def torch_gc():
     if torch.cuda.is_available():
-        with torch.cuda.device(config.CUDA_DEVICE):
+        with torch.cuda.device(CUDA_DEVICE):
             torch.cuda.empty_cache()
             torch.cuda.ipc_collect()
 
@@ -169,7 +169,7 @@ class ChatLLM(object):
         self.generation_config = GenerationConfig.from_pretrained(
             model_path, pad_token_id=self.tokenizer.pad_token_id
         )
-        # self.tokenizer.eos_token_id = self.generation_config.eos_token_id
+        self.tokenizer.eos_token_id = self.generation_config.eos_token_id
         self.stop_words_ids = []
 
         # 加载vLLM大模型
@@ -222,10 +222,10 @@ class ChatLLM(object):
         batch_response = []
         for output in outputs:
             output_str = output.outputs[0].text
-            if config.IMEND in output_str:
-                output_str = output_str[: -len(config.IMEND)]
-            if config.ENDOFTEXT in output_str:
-                output_str = output_str[: -len(config.ENDOFTEXT)]
+            if IMEND in output_str:
+                output_str = output_str[: -len(IMEND)]
+            if ENDOFTEXT in output_str:
+                output_str = output_str[: -len(ENDOFTEXT)]
             batch_response.append(output_str)
         torch_gc()
         return batch_response
@@ -233,9 +233,9 @@ class ChatLLM(object):
 
 if __name__ == "__main__":
     base = "."
-    qwen05 = base + "/model/Qwen-0.5B-Chat"
+    qwen7 = base + "/model/Qwen-7B-Chat"
     start = time.time()
-    llm = ChatLLM(qwen05)
+    llm = ChatLLM(qwen7)
     test = ["吉利汽车座椅按摩", "吉利汽车语音组手唤醒", "自动驾驶功能介绍"]
     generated_text = llm.infer(test)
     print(generated_text)
