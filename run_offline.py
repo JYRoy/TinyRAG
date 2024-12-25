@@ -321,7 +321,7 @@ def main():
                 bm25_ans = bm25_ans + doc.page_content
 
             # tfidf 召回 topk
-            tfidf_context = tfidf.GetBM25TopK(new_query, 6)
+            tfidf_context = tfidf.GetTFIDFTopK(new_query, 6)
             tfidf_ans = ""
             for doc in tfidf_context:
                 if len(tfidf_ans + doc.page_content) > max_length:
@@ -363,7 +363,7 @@ def main():
 
             # 对生成的答案进行一次润色
             new_answer = answer_polish(query, rerank_all_ans[0], line["answer_0"])
-            new_answer = llm([new_answer])
+            new_answer = llm.infer([new_answer])
             line["answer_0"] = new_answer[0]
 
         # 保存结果，生成 submission 文件
@@ -373,3 +373,6 @@ def main():
             ensure_ascii=False,
             indent=2,
         )
+
+if __name__ == "__main__":
+    main()
