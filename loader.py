@@ -4,13 +4,7 @@ import PyPDF2
 import tiktoken
 import fitz
 import spacy
-from apryse_sdk import PDFNet, HTMLOutputOptions, Convert
 import pickle
-from pathlib import Path
-from llama_index.readers.file import FlatReader
-from llama_index.core.node_parser import UnstructuredElementNodeParser
-from llama_index.core.schema import IndexNode, TextNode
-from llama_index.core.node_parser import SimpleNodeParser
 import pdfplumber
 from PyPDF2 import PdfReader
 

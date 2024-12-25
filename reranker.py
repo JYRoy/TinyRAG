@@ -1,6 +1,7 @@
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import os
 import torch
+
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from config import *
 
