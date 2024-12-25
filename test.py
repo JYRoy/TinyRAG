@@ -345,7 +345,7 @@ if __name__ == "__main__":
                     break
 
             # tfidf 召回 topk
-            tfidf_context = tfidf.GetBM25TopK(query, 15)
+            tfidf_context = tfidf.GetTFIDFTopK(query, 15)
             tfidf_ans = ""
             cnt = 0
             for doc in tfidf_context:
